@@ -14,7 +14,24 @@ using namespace vex;
 // A global instance of competition
 competition Competition;
 
-// define your global instances of motors and other devices here
+// Motor and Controller definitions
+controller Controller = controller();
+
+motor leftFront = motor(PORT12, true);
+motor leftBack = motor(PORT19, true);
+motor_group leftDrive = motor_group(leftFront, leftBack);
+
+motor rightFront = motor(PORT13, false);
+motor rightBack = motor(PORT11, false);
+motor_group rightDrive = motor_group(rightFront, rightBack);
+
+motor intake = motor(PORT2, true);
+motor conveyer = motor(PORT20, false);
+// motor pusher = motor(PORT14, false);
+
+inertial Inertial = inertial(PORT14);
+
+robot_specs_t test;
 
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
@@ -28,8 +45,20 @@ competition Competition;
 
 void pre_auton(void) {
 
-    // All activities that occur before the competition starts
-    // Example: clearing encoders, setting servo positions, ...
+  std::cout << "IN PRE-AUTO\n";
+
+  intake.setVelocity(95, rpm);
+  conveyer.setVelocity(95, rpm);
+  // pusher.setVelocity(60, rpm);
+
+  Inertial.calibrate();
+
+  test.robot_radius = 23.5;
+  test.odom_wheel_diam = 4.25;
+  test.dist_between_wheels = 14;
+  test.drive_correction_cutoff = 2;
+
+  return;
 }
 
 /*---------------------------------------------------------------------------*/
@@ -39,13 +68,13 @@ void pre_auton(void) {
 /*  This task is used to control your robot during the autonomous phase of   */
 /*  a VEX Competition.                                                       */
 /*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
 /*---------------------------------------------------------------------------*/
 
 void autonomous(void) {
-    // ..........................................................................
-    // Insert autonomous user code here.
-    // ..........................................................................
+  std::cout << "IN AUTO\n";
+
+  leftDrive.spinFor(fwd, 30, degrees);
+  rightDrive.spinFor(fwd, 30, degrees);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -55,39 +84,120 @@ void autonomous(void) {
 /*  This task is used to control your robot during the user control phase of */
 /*  a VEX Competition.                                                       */
 /*                                                                           */
-/*  You must modify the code to add your own robot specific commands here.   */
 /*---------------------------------------------------------------------------*/
 
-void usercontrol(void) {
-    // User control code here, inside the loop
-    while (1) {
-        // This is the main execution loop for the user control program.
-        // Each time through the loop your program should update motor + servo
-        // values based on feedback from the joysticks.
+// Axis 3 forward/backwards
+// Axis 1 left/right
+void alexDrive() {
+  // velocity formula for exponential speed instead of linear speed
+  double sideVelocity = (pow(abs(Controller.Axis3.position()), 1.4) / 1000) * 100;
+  if (Controller.Axis3.position() < 0)
+    sideVelocity *= -1;
 
-        // ........................................................................
-        // Insert user code here. This is where you use the joystick values to
-        // update your motors, etc.
-        // ........................................................................
+  double leftVelocity = sideVelocity;
+  double rightVelocity = sideVelocity;
 
-        wait(20, msec); // Sleep the task for a short amount of time to
-                        // prevent wasted resources.
-    }
+  double forwardVelocity = (pow(abs(Controller.Axis1.position()), 1.4) / 1000) * 100;
+  if (Controller.Axis1.position() > 0)
+    forwardVelocity *= -1;
+
+  // subtract (and add) the value of left/right velocity from the opposite wheel to turn
+  if (forwardVelocity > 0) {
+    rightVelocity -= abs(forwardVelocity);
+    leftVelocity += abs(forwardVelocity);
+  }
+  else if (forwardVelocity < 0) {
+    leftVelocity -= abs(forwardVelocity);
+    rightVelocity += abs(forwardVelocity);
+  }
+
+  leftDrive.spin(fwd, leftVelocity, percent);
+  rightDrive.spin(fwd, rightVelocity, percent);
 }
 
-//
-// Main will set up the competition functions and callbacks.
-//
-int main() {
-    // Set up callbacks for autonomous and driver control periods.
-    Competition.autonomous(autonomous);
-    Competition.drivercontrol(usercontrol);
+void usercontrol(void) {
+  // User control code here, inside the loop
+  std::cout << "\nIN TELEOP\n\n";
 
-    // Run the pre-autonomous function.
-    pre_auton();
+  while (1) {
 
-    // Prevent main from exiting with an infinite loop.
-    while (true) {
-        wait(100, msec);
+    // Drive Code
+    alexDrive();
+
+    // Intake + Conveyer
+    if (Controller.ButtonR1.pressing()) {
+      std::cout << "Intake In\n";
+      intake.spin(fwd);
+      conveyer.spin(fwd);
     }
+    else if (Controller.ButtonR2.pressing()) {
+      std::cout << "Intake Out\n";
+      intake.spin(vex::reverse);
+      conveyer.spin(vex::reverse);
+    }
+    else {
+      intake.stop();
+    }
+
+  // Pusher
+    // if (Controller.ButtonL1.pressing()) {
+    //   std::cout << "Pusher Down\n";
+    //   pusher.spin(reverse);
+    // }
+    // else if (Controller.ButtonL2.pressing()) {
+    //   std::cout << "Pusher Up\n";
+    //   pusher.spin(forward);
+    // }
+    // else {
+    //   pusher.stop();
+    // }
+
+  // Forward
+  if (Controller.ButtonUp.pressing()) {
+    std::cout << "Forward\n";
+    leftDrive.spin(fwd);
+    rightDrive.spin(fwd);
+  }
+
+  // Conveyer
+    if (Controller.ButtonB.pressing()) {
+      std::cout << "Conveyer Down";
+      conveyer.spin(fwd);
+    }
+    else if (Controller.ButtonA.pressing()) {
+      std::cout << "Conveyer Up";
+      conveyer.spin(fwd);
+    }
+    else {
+      if (Controller.ButtonR1.pressing() == false && (Controller.ButtonR2.pressing() == false)) {
+        conveyer.stop();
+      }
+    }
+
+    double test = Inertial.rotation(degrees);
+    std::cout << test << std::endl;
+
+    // Emergency Stop
+    if (Controller.ButtonX.pressing()) {
+      std::cout << "EMERGENCY STOP: RESET REQUIRED\n";
+      return;
+    }
+
+    wait(20, msec); // Sleep the task for a short amount of time to
+                    // prevent wasted resources.
+  }
+}
+
+int main() {
+  // Set up callbacks for autonomous and driver control periods.
+  Competition.autonomous(autonomous);
+  Competition.drivercontrol(usercontrol);
+
+  // Run the pre-autonomous function.
+  pre_auton();
+
+  // Prevent main from exiting with an infinite loop.
+  while (true) {
+    wait(100, msec);
+  }
 }
