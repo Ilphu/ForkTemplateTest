@@ -33,6 +33,11 @@ inertial Inertial = inertial(PORT14);
 
 robot_specs_t test;
 
+Feedback *d_feedback;
+Feedback *t_feedback;
+
+OdometryBase *odom;
+
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
 /*                                                                           */
@@ -57,6 +62,11 @@ void pre_auton(void) {
   test.odom_wheel_diam = 4.25;
   test.dist_between_wheels = 14;
   test.drive_correction_cutoff = 2;
+  test.drive_feedback = d_feedback;
+  test.turn_feedback = t_feedback;
+
+  // This is throwing errors, but I feel like something similar might work, I'm just struggling a bit on what
+  odom.is_async = true;
 
   return;
 }
@@ -73,8 +83,7 @@ void pre_auton(void) {
 void autonomous(void) {
   std::cout << "IN AUTO\n";
 
-  leftDrive.spinFor(fwd, 30, degrees);
-  rightDrive.spinFor(fwd, 30, degrees);
+  
 }
 
 /*---------------------------------------------------------------------------*/
@@ -118,6 +127,10 @@ void alexDrive() {
 void usercontrol(void) {
   // User control code here, inside the loop
   std::cout << "\nIN TELEOP\n\n";
+
+  // Would be in auton, easier to test here though
+  TankDrive driveTest(leftDrive, rightDrive, test, odom);
+  driveTest.drive_forward(3.0, fwd, *d_feedback);
 
   while (1) {
 
@@ -174,8 +187,9 @@ void usercontrol(void) {
       }
     }
 
-    double test = Inertial.rotation(degrees);
-    std::cout << test << std::endl;
+    // Testing if sensor works
+    // double test = Inertial.rotation(degrees);
+    // std::cout << test << std::endl;
 
     // Emergency Stop
     if (Controller.ButtonX.pressing()) {
